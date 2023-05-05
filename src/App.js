@@ -1,48 +1,233 @@
-import { ConnectWallet } from "@thirdweb-dev/react";
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  ConnectWallet,
+  useContract,
+  useAddress,
+  useActiveClaimCondition,
+  useContractMetadata,
+  useClaimIneligibilityReasons,
+  Web3Button,
+  useUnclaimedNFTSupply,
+  useClaimedNFTSupply,
+  useClaimerProofs,
+} from "@thirdweb-dev/react";
+import { ethers, BigNumber, utils } from "ethers";
+import { collectionName, collectionURL, currencyName, nftContractAddress, fixNumber, currencyAddress, pricePerToken } from "./const/yourDetails.js";
 import "./styles/Home.css";
+import styles from "./styles/Theme.module.css";
+
 
 export default function Home() {
+  const { contract: nftDrop } = useContract(nftContractAddress);
+  const address = useAddress();
+  const [quantity, setQuantity] = useState(1);
+
+  const { data: contractMetadata } = useContractMetadata(nftDrop);
+
+
+  const { data: activeClaimCondition } = useActiveClaimCondition(nftDrop, "1", {
+    withAllowList: true
+  });
+
+  const { data: claimerData, isLoading: claimerIsLoading } = useClaimerProofs(nftDrop, address || "");
+  const claimIneligibilityReasons = useClaimIneligibilityReasons(nftDrop, {
+    quantity,
+    walletAddress: address || "",
+  });
+
+  const unclaimedSupply = useUnclaimedNFTSupply(nftDrop);
+  const claimedSupply = useClaimedNFTSupply(nftDrop);
+
+
+  // const { data: claimerData, isLoading: claimerIsLoading } = useClaimerProofs(nftDrop, address || "");
+  const [numClaimed, setNumClaimed] = useState(0);
+  const [claimerProofs, setClaimerProofs] = useState({});
+
+  const [finalPrice, setFinalPrice] = useState(parseInt(pricePerToken).toFixed(fixNumber));
+  const [isOnAllowList, setIsOnAllowList] = useState(false);
+
+  const numberClaimed = useMemo(() => {
+    return BigNumber.from(claimedSupply?.data || 0).toString();
+  }, [claimedSupply]);
+
+  const numberTotal = useMemo(() => {
+    return BigNumber.from(claimedSupply?.data || 0)
+      .add(BigNumber.from(unclaimedSupply?.data || 0))
+      .toString();
+  }, [claimedSupply?.data, unclaimedSupply?.data]);
+
+
+  const canClaim = useMemo(() => {
+    return (
+      activeClaimCondition?.isSuccess &&
+      claimIneligibilityReasons?.isSuccess &&
+      claimIneligibilityReasons?.data?.length === 0
+    );
+  }, [
+    activeClaimCondition?.isSuccess,
+    claimIneligibilityReasons?.data?.length,
+    claimIneligibilityReasons?.isSuccess,
+  ]);
+
+
+
+  const ownedNFTs = useMemo(async () => {
+    if (!address || !nftDrop) { return []; }
+
+    const nfts = await nftDrop.erc721.getOwned(address);
+    setNumClaimed(nfts.length);
+    return nfts;
+
+  }, [address, nftDrop]);
+
+  const isLoading = useMemo(() => {
+    return (
+      activeClaimCondition?.isLoading ||
+      unclaimedSupply?.isLoading ||
+      claimedSupply?.isLoading ||
+      !nftDrop
+    );
+  }, [
+    activeClaimCondition?.isLoading,
+    nftDrop,
+    claimedSupply?.isLoading,
+    unclaimedSupply?.isLoading,
+  ]);
+
+  useEffect(() => {
+    let allowlistProof = {}
+    if (!claimerIsLoading && address) {
+
+      if (typeof claimerData !== 'undefined' && claimerData !== null) {
+
+        console.log("claimerData", JSON.stringify(claimerData));
+       
+        const maxClaims = Number.parseInt(claimerData?.maxClaimable);
+        const ppToken = Number.parseInt(claimerData?.price);
+        const maxClaim = ethers.utils.hexValue(maxClaims);
+        const ppT = ethers.utils.hexValue(ppToken);
+
+        allowlistProof = {
+          proof: claimerData?.proof,
+          quantityLimitPerWallet: { "type": "BigNumber", "hex": maxClaim },
+          pricePerToken: { "type": "BigNumber", "hex": ppT },
+          currency: claimerData?.currencyAddress.toString()
+        };
+        setIsOnAllowList(true);
+      } else {
+
+        allowlistProof = {
+          proof: ["0x0000000000000000000000000000000000000000000000000000000000000000"],
+          quantityLimitPerWallet: { "type": "BigNumber", "hex": "0x0" },
+          pricePerToken: { "type": "BigNumber", "hex": "0x0" },
+          currency: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+
+      }
+
+      // claimerProofs
+    } else {
+      allowlistProof = {
+        proof: ["0x0000000000000000000000000000000000000000000000000000000000000000"],
+        quantityLimitPerWallet: { "type": "BigNumber", "hex": "0x0" },
+        pricePerToken: { "type": "BigNumber", "hex": "0x0" },
+        currency: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
+    }
+    console.log('claimerData', JSON.stringify(allowlistProof));
+    setClaimerProofs(allowlistProof);
+    // Update totals
+
+  }, [claimerData, claimerIsLoading, address]);
+
+
+  const calculateNewPrice = (quantity) => {
+    // if you want to limit the amount they can claim catch it here 
+    // check if quantity is bigger than you want and set quanity to your max.
+    setQuantity(quantity);
+
+    let price = 0;
+    let PPT = pricePerToken;
+    const basePrice = PPT * quantity;
+
+    if (isOnAllowList) {
+      const Maxfree = claimerData?.maxClaimable;
+      const discount = numClaimed >= parseInt(Maxfree) ? 0 : Maxfree - numClaimed;
+      const newQuantity = discount > 0 && discount > quantity ? 0 :
+        discount > 0 && discount <= quantity ? quantity - discount :
+          quantity;
+      price = (newQuantity * PPT);
+
+      setFinalPrice(price.toFixed(fixNumber));
+    } else {
+      setFinalPrice(basePrice.toFixed(fixNumber));
+    }
+
+
+  }
+ 
+
   return (
     <div className="container">
       <main className="main">
         <h1 className="title">
-          Welcome to <a href="https://thirdweb.com/">thirdweb</a>!
+          Welcome to <a href={collectionURL}>{collectionName}</a>!
         </h1>
 
         <p className="description">
-          Get started by configuring your desired network in{" "}
-          <code className="code">src/index.js</code>, then modify the{" "}
-          <code className="code">src/App.js</code> file!
+          {contractMetadata?.description}
+          Choose how many NFTs you want to mint{" "}
         </p>
 
         <div className="connect">
-          <ConnectWallet dropdownPosition={{ side: 'bottom', align: 'center'}} />
+          <ConnectWallet dropdownPosition={{ side: 'bottom', align: 'center' }} />
         </div>
 
-        <div className="grid">
-          <a href="https://portal.thirdweb.com/" className="card">
-            <h2>Portal &rarr;</h2>
-            <p>
-              Guides, references and resources that will help you build with
-              thirdweb.
-            </p>
-          </a>
+        {
+          !address ? null :
+            isLoading ? <div className="grid"> loading... </div> : <div className="grid">
+              <label>
+                Quantity:
+                <input type="number"
+                  value={quantity}
+                  onChange={(e) => calculateNewPrice(e.target.value)}
+                />
+              </label>
+              <div className={styles.mintAreaLeft}>
+                <p>Total Minted</p>
+              </div>
+              <div className={styles.mintAreaRight}>
+                {claimedSupply && unclaimedSupply ? (
+                  <p>
+                    <b>{numberClaimed}</b>
+                    {" / "}
+                    {numberTotal}
+                  </p>
+                ) : (
+                  <p>Loading...</p>
+                )}
+              </div>
+              <Web3Button
+                contractAddress={nftContractAddress}
+                action={async (contract) => {
+                  // const nftBasePrice = parseInt(pricePerToken);
+                  const pricePerTokenNftBasePrice = ethers.utils.parseEther(pricePerToken);
+                  const finalPriceFormatted = ethers.utils.parseEther(finalPrice);
 
-          <a href="https://thirdweb.com/dashboard" className="card">
-            <h2>Dashboard &rarr;</h2>
-            <p>
-              Deploy, configure and manage your smart contracts from the
-              dashboard.
-            </p>
-          </a>
+                  console.log("finalPriceFormatted", finalPriceFormatted)
+                  const data = await contract.call("claim", [address, quantity, currencyAddress, pricePerTokenNftBasePrice, claimerProofs, "0x00"],
+                    {
+                      value: finalPriceFormatted,
+                    })
 
-          <a href="https://portal.thirdweb.com/templates" className="card">
-            <h2>Templates &rarr;</h2>
-            <p>
-              Discover and clone template projects showcasing thirdweb features.
-            </p>
-          </a>
-        </div>
+
+                }}
+                isDisabled={quantity <= 1 || !canClaim || isLoading}
+              >
+                Mint{' '}
+                {finalPrice === 0 ? 'Free' : finalPrice + ' ' + currencyName}
+              </Web3Button>
+            </div>}
       </main>
     </div>
   );
