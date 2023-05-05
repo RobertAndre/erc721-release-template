@@ -1,23 +1,12 @@
-## Getting Started
+## NFT Drop with Release Minting Page 
 
-Create a project using this example:
+In this example, you can create your own NFT Drop minting page just by customising the template with your branding, and plugging in your NFT Drop contract address.
 
-```bash
-npx thirdweb create --template cra-javascript-starter
-```
+## Tools
 
-You can start editing the page by modifying `src/index.js`. The page auto-updates as you edit the file.
-
-On `src/index.js`, you'll find our `ThirdwebProvider` wrapping your app, this is necessary for our [hooks](https://portal.thirdweb.com/react) and
-[UI Components](https://portal.thirdweb.com/ui-components) to work.
-
-### Deploy to IPFS
-
-Deploy a copy of your application to IPFS using the following command:
-
-```bash
-yarn deploy
-```
+- [**NFT Drop**](https://thirdweb.com/igorandandre.eth/ERC721DropRelease): to create a lazy-minted ERC721 NFT Collection that our users can claim.
+- [**React SDK**](https://docs.thirdweb.com/react): to enable users to connect their wallets with the [useMetamask](https://portal.thirdweb.com/react/react.usemetamask) hook, and access hooks such as [useNFTDrop](https://portal.thirdweb.com/react/react.usenftdrop) to interact with the NFT drop contract.
+- [**TypeScript SDK**](https://docs.thirdweb.com/typescript): to view the claimed supply, total supply, and mint NFTs from the drop.
 
 ## Learn More
 
