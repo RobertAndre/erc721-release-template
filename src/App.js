@@ -30,11 +30,6 @@ export default function Home() {
 
   const { data: claimerData, isLoading: claimerIsLoading } = useClaimerProofs(nftDrop, address || "");
 
-  // const claimIneligibilityReasons = useClaimIneligibilityReasons(nftDrop, {
-  //   quantity,
-  //   walletAddress: address || "",
-  // });
-
   const unclaimedSupply = useUnclaimedNFTSupply(nftDrop);
   const claimedSupply = useClaimedNFTSupply(nftDrop);
   const [numClaimed, setNumClaimed] = useState(0);
@@ -106,21 +101,21 @@ export default function Home() {
           pricePerToken: { "type": "BigNumber", "hex": ppT },
           currency: currencyAddress
         };
-        // calculateNewPrice(quantity, maxClaims);
+      
         setIsOnAllowList(true);
       } else {
 
         allowlistProof = notOnAllowList;
 
       }
-      // claimerProofs
+
     } else {
       allowlistProof = notOnAllowList;
     }
     console.log('claimerData', JSON.stringify(allowlistProof));
     
     setClaimerProofs(allowlistProof);
-    // Update totals
+
 
   }, [claimerData, claimerIsLoading, address]);
 
@@ -184,7 +179,8 @@ export default function Home() {
     }
     return max.toNumber();
   }, [
-    claimerProofs?.maxClaimable,
+   
+    claimerProofs?.data?.maxClaimable,
     unclaimedSupply.data,
     activeClaimCondition?.maxClaimableSupply,
     activeClaimCondition?.maxClaimablePerWallet,
@@ -197,8 +193,6 @@ export default function Home() {
       let PPT = pricePerToken;
       let basePrice = PPT * quantity;
       console.log(JSON.stringify(claimerProofs));
-  
-        
   
       if (isOnAllowList) {
        
@@ -215,7 +209,7 @@ export default function Home() {
         }
      
 
-  }, [quantity, claimerProofs, maxDiscountNumber]);
+  }, [quantity, claimerProofs, maxDiscountNumber, isOnAllowList, ownedNFTs, numClaimed]);
 
  
  
@@ -239,13 +233,7 @@ export default function Home() {
         {
           !address ? null :
             isLoading ? <div className="grid"> loading... </div> : <div className="grid">
-              {/* <label>
-                Quantity:
-                <input type="number"
-                  value={quantity}
-                  onChange={(e) => calculateNewPrice(e.target.value)}
-                />
-              </label> */}
+       
                   <p>Quantity</p>
                   <div className={styles.quantityContainer}>
                     <button
