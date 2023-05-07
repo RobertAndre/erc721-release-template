@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ConnectWallet,
   useContract,
@@ -9,9 +9,9 @@ import {
   Web3Button,
   useUnclaimedNFTSupply,
   useClaimedNFTSupply,
-  useClaimerProofs,
+
 } from "@thirdweb-dev/react";
-import { ethers, BigNumber, utils } from "ethers";
+import { ethers, BigNumber } from "ethers";
 import { collectionName, collectionURL, currencyName, nftContractAddress, fixNumber, currencyAddress, pricePerToken } from "./const/yourDetails.js";
 import "./styles/Home.css";
 import styles from "./styles/Theme.module.css";
@@ -29,7 +29,7 @@ export default function Home() {
     withAllowList: true
   });
 
-  const { data: claimerData, isLoading: claimerIsLoading } = useClaimerProofs(nftDrop, address || "");
+ 
   const claimIneligibilityReasons = useClaimIneligibilityReasons(nftDrop, {
     quantity,
     walletAddress: address || "",
@@ -38,12 +38,10 @@ export default function Home() {
   const unclaimedSupply = useUnclaimedNFTSupply(nftDrop);
   const claimedSupply = useClaimedNFTSupply(nftDrop);
 
-
-  // const { data: claimerData, isLoading: claimerIsLoading } = useClaimerProofs(nftDrop, address || "");
   const [numClaimed, setNumClaimed] = useState(0);
-  const [claimerProofs, setClaimerProofs] = useState({});
+  const [maxDiscountNumber, setMaxDiscountNumber] = useState(0);
 
-  const [finalPrice, setFinalPrice] = useState(parseInt(pricePerToken).toFixed(fixNumber));
+  const [finalPrice, setFinalPrice] = useState(pricePerToken);
   const [isOnAllowList, setIsOnAllowList] = useState(false);
 
   const numberClaimed = useMemo(() => {
@@ -93,52 +91,47 @@ export default function Home() {
     claimedSupply?.isLoading,
     unclaimedSupply?.isLoading,
   ]);
+ 
+  const claimerProofs = useMemo(() => {
+    if (!address || !nftDrop ) return {};
 
-  useEffect(() => {
-    let allowlistProof = {}
-    if (!claimerIsLoading && address) {
+    const notOnAllowList =  {
+      proof: ["0x0000000000000000000000000000000000000000000000000000000000000000"],
+      quantityLimitPerWallet: { "type": "BigNumber", "hex": "0x0" },
+      pricePerToken: { "type": "BigNumber", "hex": "0x0" },
+      currency: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    };
+  
+    const getClaimVerification = async () => {
 
-      if (typeof claimerData !== 'undefined' && claimerData !== null) {
+      const claimVerification = await nftDrop.erc721.claimConditions.getClaimerProofs(address);
+      if (typeof claimVerification !== 'undefined' && claimVerification !== null) {
 
-        console.log("claimerData", JSON.stringify(claimerData));
-       
-        const maxClaims = Number.parseInt(claimerData?.maxClaimable);
-        const ppToken = Number.parseInt(claimerData?.price);
-        const maxClaim = ethers.utils.hexValue(maxClaims);
-        const ppT = ethers.utils.hexValue(ppToken);
+          const maxClaims = Number.parseInt(claimVerification?.maxClaimable);
+          const ppToken = ethers.utils.parseEther(claimVerification?.price);
+          const maxClaim = ethers.utils.hexValue(maxClaims);
+          setMaxDiscountNumber(claimVerification?.maxClaimable || "0");
+          const ppT = ethers.utils.hexValue(ppToken);
+          setIsOnAllowList(true);
 
-        allowlistProof = {
-          proof: claimerData?.proof,
-          quantityLimitPerWallet: { "type": "BigNumber", "hex": maxClaim },
-          pricePerToken: { "type": "BigNumber", "hex": ppT },
-          currency: claimerData?.currencyAddress.toString()
-        };
-        setIsOnAllowList(true);
-      } else {
+          const allowlistProof = {
+            proof: claimVerification?.proof,
+            quantityLimitPerWallet: { "type": "BigNumber", "hex": maxClaim },
+            pricePerToken: { "type": "BigNumber", "hex": ppT },
+            currency: claimVerification?.currencyAddress.toString()
+          };
+          console.log("allowlistProof", JSON.stringify(allowlistProof));
+          return allowlistProof;
 
-        allowlistProof = {
-          proof: ["0x0000000000000000000000000000000000000000000000000000000000000000"],
-          quantityLimitPerWallet: { "type": "BigNumber", "hex": "0x0" },
-          pricePerToken: { "type": "BigNumber", "hex": "0x0" },
-          currency: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }else{
+          console.log("Not On Allow");
+          return notOnAllowList;
         }
-
-      }
-
-      // claimerProofs
-    } else {
-      allowlistProof = {
-        proof: ["0x0000000000000000000000000000000000000000000000000000000000000000"],
-        quantityLimitPerWallet: { "type": "BigNumber", "hex": "0x0" },
-        pricePerToken: { "type": "BigNumber", "hex": "0x0" },
-        currency: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-      }
     }
-    console.log('claimerData', JSON.stringify(allowlistProof));
-    setClaimerProofs(allowlistProof);
-    // Update totals
+    return getClaimVerification();
 
-  }, [claimerData, claimerIsLoading, address]);
+  }, [nftDrop, address]);
+
 
 
   const calculateNewPrice = (quantity) => {
@@ -151,7 +144,7 @@ export default function Home() {
     const basePrice = PPT * quantity;
 
     if (isOnAllowList) {
-      const Maxfree = claimerData?.maxClaimable;
+      const Maxfree = maxDiscountNumber;
       const discount = numClaimed >= parseInt(Maxfree) ? 0 : Maxfree - numClaimed;
       const newQuantity = discount > 0 && discount > quantity ? 0 :
         discount > 0 && discount <= quantity ? quantity - discount :
@@ -210,7 +203,7 @@ export default function Home() {
               <Web3Button
                 contractAddress={nftContractAddress}
                 action={async (contract) => {
-                  // const nftBasePrice = parseInt(pricePerToken);
+            
                   const pricePerTokenNftBasePrice = ethers.utils.parseEther(pricePerToken);
                   const finalPriceFormatted = ethers.utils.parseEther(finalPrice);
 
@@ -219,10 +212,10 @@ export default function Home() {
                     {
                       value: finalPriceFormatted,
                     })
-
+                    console.log(JSON.stringify(data));
 
                 }}
-                isDisabled={quantity <= 1 || !canClaim || isLoading}
+                isDisabled={quantity <= 1 || !canClaim || isLoading || claimerProofs.length < 2}
               >
                 Mint{' '}
                 {finalPrice === 0 ? 'Free' : finalPrice + ' ' + currencyName}
