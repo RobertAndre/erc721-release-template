@@ -4,6 +4,7 @@ import {
   useContract,
   useAddress,
   useActiveClaimCondition,
+  useActiveClaimConditionForWallet,
   useContractMetadata,
   Web3Button,
   useUnclaimedNFTSupply,
@@ -29,12 +30,14 @@ export default function Home() {
   });
 
   const { data: claimerData, isLoading: claimerIsLoading } = useClaimerProofs(nftDrop, address || "");
+  const { data: walletData } = useActiveClaimConditionForWallet(nftDrop, address || "");
 
   const unclaimedSupply = useUnclaimedNFTSupply(nftDrop);
   const claimedSupply = useClaimedNFTSupply(nftDrop);
   const [numClaimed, setNumClaimed] = useState(0);
   const [claimerProofs, setClaimerProofs] = useState({});
   const [maxDiscountNumber, setMaxDiscountNumber] = useState(0);
+
 
   const [finalPrice, setFinalPrice] = useState(pricePerToken);
   const [isOnAllowList, setIsOnAllowList] = useState(false);
@@ -53,13 +56,17 @@ export default function Home() {
 
 
   const ownedNFTs = useMemo(async () => {
-    if (!address || !nftDrop) { return []; }
+    if (!address || !nftDrop || !walletData) { return []; }
 
     const nfts = await nftDrop.erc721.getOwned(address);
-    setNumClaimed(nfts.length);
+   
+    setNumClaimed(parseInt(walletData.currentMintSupply));
+
     return nfts;
 
-  }, [address, nftDrop]);
+  }, [address, nftDrop, walletData]);
+
+  
 
   const isLoading = useMemo(() => {
     return (
@@ -76,13 +83,13 @@ export default function Home() {
   ]);
 
   useEffect(() => {
-    let allowlistProof = {}
-    const notOnAllowList = {
+    let allowlistProof = {
       proof: ["0x0000000000000000000000000000000000000000000000000000000000000000"],
       quantityLimitPerWallet: { "type": "BigNumber", "hex": "0x0" },
       pricePerToken: { "type": "BigNumber", "hex": "0x0" },
       currency: currencyAddress
-    };
+    }
+
     if (!claimerIsLoading && address) {
      
       if (typeof claimerData !== 'undefined' && claimerData !== null) {
@@ -95,29 +102,28 @@ export default function Home() {
         const maxClaim = ethers.utils.hexValue(maxClaims);
         const ppT = ethers.utils.hexValue(ppToken);
 
-        allowlistProof = {
-          proof: claimerData?.proof,
-          quantityLimitPerWallet: { "type": "BigNumber", "hex": maxClaim },
-          pricePerToken: { "type": "BigNumber", "hex": ppT },
-          currency: currencyAddress
-        };
-      
-        setIsOnAllowList(true);
-      } else {
-
-        allowlistProof = notOnAllowList;
+        if(maxClaims > numClaimed){
+          allowlistProof = {
+            proof: claimerData?.proof,
+            quantityLimitPerWallet: { "type": "BigNumber", "hex": maxClaim },
+            pricePerToken: { "type": "BigNumber", "hex": ppT },
+            currency: currencyAddress
+          };
+          setIsOnAllowList(true);
+        }else{
+          setIsOnAllowList(false);
+        }
 
       }
 
-    } else {
-      allowlistProof = notOnAllowList;
     }
+
     console.log('claimerData', JSON.stringify(allowlistProof));
     
     setClaimerProofs(allowlistProof);
 
 
-  }, [claimerData, claimerIsLoading, address]);
+  }, [claimerData, claimerIsLoading, address, numClaimed]);
 
 
 
@@ -192,10 +198,10 @@ export default function Home() {
       let price = 0;
       let PPT = pricePerToken;
       let basePrice = PPT * quantity;
-      console.log(JSON.stringify(claimerProofs));
+      
   
-      if (isOnAllowList) {
-       
+      if (isOnAllowList && maxDiscountNumber > numClaimed) {
+          
           const Maxfree = maxDiscountNumber;
           const discount = numClaimed >= parseInt(Maxfree) ? 0 : Maxfree - numClaimed;
           const newQuantity = discount > 0 && discount > quantity ? 0 :
@@ -205,7 +211,9 @@ export default function Home() {
           const finalPrice = newQuantity === 0 ? 0 : price.toFixed(fixNumber)
           setFinalPrice(finalPrice);
         } else {
+        
           setFinalPrice(basePrice.toFixed(fixNumber));
+         
         }
      
 
@@ -273,7 +281,7 @@ export default function Home() {
                 action={async (contract) => {
             
                   const pricePerTokenNftBasePrice = ethers.utils.parseEther(pricePerToken);
-                  const finalPriceFormatted = ethers.utils.parseEther(finalPrice);
+                  const finalPriceFormatted = ethers.utils.parseEther(finalPrice.toString());
 
                   console.log("claimerProofs", claimerProofs)
                   const data = await contract.call("claim", [address, quantity, currencyAddress, pricePerTokenNftBasePrice, claimerProofs, "0x00"],
@@ -281,7 +289,8 @@ export default function Home() {
                       value: finalPriceFormatted,
                     })
                     console.log(JSON.stringify(data));
-
+                    setQuantity(1);
+                  
                 }}
                 isDisabled={quantity < 1 || isLoading }
               >
